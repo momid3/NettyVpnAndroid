@@ -7,6 +7,7 @@ import com.momid.momidvpn0.byteArrayToShort
 import com.momid.momidvpn0.putShort
 import com.momid.momidvpn0.receivePackets
 import com.momid.momidvpn0.sendPackets
+import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.net.Socket
 import kotlin.system.exitProcess
@@ -65,27 +66,27 @@ fun startReceivingConnection() {
     }
 }
 
-fun startSendingAndReceiving() {
+fun startSendingAndReceiving(onReceive: (ByteArray) -> Unit): OutputStream {
     val tcpClient = Socket()
     tcpClient.connect(InetSocketAddress(SERVER_IP_ADDRESS, 33338))
     val inputStream = tcpClient.getInputStream()
     val outputStream = tcpClient.getOutputStream()
 
-    Thread {
-        val buffer = ByteArray(3000)
-
-        while (true) {
-            val packet = sendPackets.take()
-            val size = packet.size
-
-//        putShort(buffer, 0, size.toShort())
-//        packet.copyInto(buffer, 2)
-
-//        outputStream.write(buffer, 0, packet.size + 2)
-            outputStream.write(packet, 0, packet.size)
-            outputStream.flush()
-        }
-    }.start()
+//    Thread {
+//        val buffer = ByteArray(3000)
+//
+//        while (true) {
+//            val packet = sendPackets.take()
+//            val size = packet.size
+//
+////        putShort(buffer, 0, size.toShort())
+////        packet.copyInto(buffer, 2)
+//
+////        outputStream.write(buffer, 0, packet.size + 2)
+//            outputStream.write(packet, 0, packet.size)
+//            outputStream.flush()
+//        }
+//    }.start()
 
     Thread {
         val buffer = ByteArray(3000)
@@ -110,7 +111,9 @@ fun startSendingAndReceiving() {
                 exitProcess(0)
             }
             println("received ")
-            receivePackets.put(buffer.sliceArray(0 until size))
+            onReceive(buffer.sliceArray(0 until size))
         }
     }.start()
+
+    return outputStream
 }

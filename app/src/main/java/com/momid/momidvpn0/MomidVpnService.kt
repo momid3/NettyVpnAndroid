@@ -23,6 +23,7 @@ import java.util.concurrent.Executors
 import com.momid.momidvpn0.tcp.startSendConnection
 import com.momid.momidvpn0.tcp.startReceivingConnection
 import com.momid.momidvpn0.tcp.startSendingAndReceiving
+import java.io.OutputStream
 
 val SERVER_IP_ADDRESS = "141.98.210.95"
 
@@ -33,6 +34,7 @@ class MomidVpnService : VpnService() {
     private val serverSocketAddress = InetSocketAddress("141.98.210.95", 33338)
     private val executor = Executors.newSingleThreadExecutor()
     private val transmissionExecutor = Executors.newSingleThreadExecutor()
+    var tcpOutputStream: OutputStream? = null
 
 
     private var input: FileInputStream? = null
@@ -86,23 +88,34 @@ class MomidVpnService : VpnService() {
 //        }.start()
 
         Thread {
-            startSendingAndReceiving()
-        }.start()
-
-        Thread {
-            while (true) {
-//                runBlocking {
-//                    launch {
-                        try {
-                            val packet = receivePackets.take()
-                            output?.write(packet) ?: println("output is null")
-                        } catch (t: Throwable) {
-                            t.printStackTrace()
-                        }
-//                    }
-//                }
+            tcpOutputStream = startSendingAndReceiving {
+                try {
+                    if (output != null) {
+                        println(it.joinToString(" ") { eachByte -> "%02x".format(eachByte) } + "\n\n\n")
+                        output!!.write(it)
+                    } else {
+                        println("output is null")
+                    }
+                } catch (t: Throwable) {
+                    t.printStackTrace()
+                }
             }
         }.start()
+
+//        Thread {
+//            while (true) {
+////                runBlocking {
+////                    launch {
+//                        try {
+//                            val packet = receivePackets.take()
+//                            output?.write(packet) ?: println("output is null")
+//                        } catch (t: Throwable) {
+//                            t.printStackTrace()
+//                        }
+////                    }
+////                }
+//            }
+//        }.start()
 
         println("starting")
 
@@ -145,7 +158,8 @@ class MomidVpnService : VpnService() {
 //                                                        receiveBuffer.sliceArray(0 until incomingDataSize)
 //                                                    }
 //                            runBlocking {
-                                sendPackets.put(incomingData)
+//                                sendPackets.put(incomingData)
+                            tcpOutputStream?.write(incomingData)
 //                            }
                         }
                     } catch (ioException: IOException) {
