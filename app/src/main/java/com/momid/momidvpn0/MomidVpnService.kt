@@ -22,6 +22,7 @@ import java.net.InetSocketAddress
 import java.util.concurrent.Executors
 import com.momid.momidvpn0.tcp.startSendConnection
 import com.momid.momidvpn0.tcp.startReceivingConnection
+import com.momid.momidvpn0.tcp.startSendingAndReceiving
 
 val SERVER_IP_ADDRESS = "141.98.210.95"
 
@@ -72,16 +73,20 @@ class MomidVpnService : VpnService() {
 //            startSendConnection()
 //        }
 
-        Thread {
-            startSendConnection()
-        }.start()
+//        Thread {
+//            startSendConnection()
+//        }.start()
 
 //        CoroutineScope(Dispatchers.IO).launch {
 //            startReceivingConnection()
 //        }
 
+//        Thread {
+//            startReceivingConnection()
+//        }.start()
+
         Thread {
-            startReceivingConnection()
+            startSendingAndReceiving()
         }.start()
 
         Thread {
@@ -184,7 +189,7 @@ class MomidVpnService : VpnService() {
         vpnBuilder.addAddress("192.168.3.8", 32)
         vpnBuilder.addRoute("0.0.0.0", 0)
         vpnBuilder.addDnsServer("1.1.1.1")
-        vpnBuilder.setMtu(1350)
+        vpnBuilder.setMtu(1100)
 
 //        vpnBuilder.addRoute("0.0.0.0", 1);
 //        vpnBuilder.addRoute("128.0.0.0", 1);
