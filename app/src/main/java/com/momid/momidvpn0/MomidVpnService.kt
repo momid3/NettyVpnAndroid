@@ -23,9 +23,14 @@ import java.util.concurrent.Executors
 import com.momid.momidvpn0.tcp.startSendConnection
 import com.momid.momidvpn0.tcp.startReceivingConnection
 import com.momid.momidvpn0.tcp.startSendingAndReceiving
+import com.momid.momidvpn0.tcp.tcpSocket
+import com.momid.momidvpn0.tcp.writeWithSize
+import com.momid.momidvpn0.tcp.xorEncode
 import java.io.OutputStream
 
 val SERVER_IP_ADDRESS = "141.98.210.95"
+
+var tcpOutputStream: OutputStream? = null
 
 class MomidVpnService : VpnService() {
 
@@ -34,7 +39,7 @@ class MomidVpnService : VpnService() {
     private val serverSocketAddress = InetSocketAddress("141.98.210.95", 33338)
     private val executor = Executors.newSingleThreadExecutor()
     private val transmissionExecutor = Executors.newSingleThreadExecutor()
-    var tcpOutputStream: OutputStream? = null
+    val writeToInternetBuffer = ByteArray(30000)
 
 
     private var input: FileInputStream? = null
@@ -88,7 +93,67 @@ class MomidVpnService : VpnService() {
 //        }.start()
 
         Thread {
-            tcpOutputStream = startSendingAndReceiving {
+            startSendingAndReceiving({
+                if (!protect(tcpSocket)) {
+                    println("socket not protected")
+                }
+
+                parcelFileDescriptor =
+                    connectVpn() ?: kotlin.run { println("cannot connect"); return@startSendingAndReceiving }
+                try {
+//            input = FileInputStream(parcelFileDescriptor.fileDescriptor)
+                    output = FileOutputStream(parcelFileDescriptor!!.fileDescriptor)
+                } catch (throwable: Throwable) {
+                    throwable.printStackTrace()
+                    return@startSendingAndReceiving
+                }
+                receiveThread =
+                    Thread {
+                        input =
+                            FileInputStream(parcelFileDescriptor!!.fileDescriptor)
+//                                    is_new_send.set(true)
+
+                        while (connected == CONNECTED) {
+                            try {
+                                val incomingDataSize = input!!.read(receiveBuffer)
+//                                executor.execute {
+                                    val incomingData =
+                                        receiveBuffer.sliceArray(0 until incomingDataSize)
+//                                                    if (is_new_send.get()) {
+//                                                        is_new_send.set(false)
+//                                                        receiveBuffer.sliceArray(0 until incomingDataSize)
+//                                                            .hide()
+//                                                    } else {
+//                                                        receiveBuffer.sliceArray(0 until incomingDataSize)
+//                                                    }
+//                            runBlocking {
+//                                sendPackets.put(incomingData)
+                                    xorEncode(incomingData)
+                                    tcpOutputStream?.writeWithSize(incomingData, writeToInternetBuffer)
+//                            }
+//                                }
+                            } catch (ioException: IOException) {
+                                ioException.printStackTrace()
+                                return@Thread
+                            }
+                        }
+                    }
+
+//                        receiveThread?.start()
+
+//        udpHandler!!.startReceiving(object : UdpHandler.PacketListener {
+//            override fun onPacket(packet: ByteArray, socketAddress: SocketAddress) {
+//                try {
+//                    output!!.write(packet)
+////                    println("received" + packet.joinToString(" ") { String.format("0x%02X", it) })
+//                } catch (throwable: Throwable) {
+//                    throwable.printStackTrace()
+//                }
+//            }
+//        })
+
+                receiveThread?.start()
+            }, {
                 try {
                     if (output != null) {
                         println(it.joinToString(" ") { eachByte -> "%02x".format(eachByte) } + "\n\n\n")
@@ -99,7 +164,7 @@ class MomidVpnService : VpnService() {
                 } catch (t: Throwable) {
                     t.printStackTrace()
                 }
-            }
+            })
         }.start()
 
 //        Thread {
@@ -128,61 +193,6 @@ class MomidVpnService : VpnService() {
 //                            println("protecting socket failed")
 //                            return@init
 //                        }
-
-        parcelFileDescriptor =
-            connectVpn() ?: kotlin.run { println("cannot connect"); return }
-        try {
-//            input = FileInputStream(parcelFileDescriptor.fileDescriptor)
-            output = FileOutputStream(parcelFileDescriptor!!.fileDescriptor)
-        } catch (throwable: Throwable) {
-            throwable.printStackTrace()
-            return
-        }
-        receiveThread =
-            Thread {
-                input =
-                    FileInputStream(parcelFileDescriptor!!.fileDescriptor)
-//                                    is_new_send.set(true)
-
-                while (connected == CONNECTED) {
-                    try {
-                        val incomingDataSize = input!!.read(receiveBuffer)
-                        executor.execute {
-                            val incomingData =
-                                receiveBuffer.sliceArray(0 until incomingDataSize)
-//                                                    if (is_new_send.get()) {
-//                                                        is_new_send.set(false)
-//                                                        receiveBuffer.sliceArray(0 until incomingDataSize)
-//                                                            .hide()
-//                                                    } else {
-//                                                        receiveBuffer.sliceArray(0 until incomingDataSize)
-//                                                    }
-//                            runBlocking {
-//                                sendPackets.put(incomingData)
-                            tcpOutputStream?.write(incomingData)
-//                            }
-                        }
-                    } catch (ioException: IOException) {
-                        ioException.printStackTrace()
-                        return@Thread
-                    }
-                }
-            }
-
-//                        receiveThread?.start()
-
-//        udpHandler!!.startReceiving(object : UdpHandler.PacketListener {
-//            override fun onPacket(packet: ByteArray, socketAddress: SocketAddress) {
-//                try {
-//                    output!!.write(packet)
-////                    println("received" + packet.joinToString(" ") { String.format("0x%02X", it) })
-//                } catch (throwable: Throwable) {
-//                    throwable.printStackTrace()
-//                }
-//            }
-//        })
-
-        receiveThread?.start()
     }
 
     public fun disconnect() {
@@ -203,7 +213,7 @@ class MomidVpnService : VpnService() {
         vpnBuilder.addAddress("192.168.3.8", 32)
         vpnBuilder.addRoute("0.0.0.0", 0)
         vpnBuilder.addDnsServer("1.1.1.1")
-        vpnBuilder.setMtu(1100)
+        vpnBuilder.setMtu(1380)
 
 //        vpnBuilder.addRoute("0.0.0.0", 1);
 //        vpnBuilder.addRoute("128.0.0.0", 1);
@@ -362,7 +372,7 @@ class MomidVpnService : VpnService() {
 
         vpnBuilder.setBlocking(true)
         vpnBuilder.setSession("aoi")
-        vpnBuilder.addDisallowedApplication("com.momid.momidvpn0")
+//        vpnBuilder.addDisallowedApplication("com.momid.momidvpn0")
 //        vpnBuilder.setUnderlyingNetworks(arrayOf(networks))
         return vpnBuilder.establish()
     }

@@ -1,19 +1,19 @@
 package com.momid.momidvpn0
 
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.logging.LogLevel
-import io.ktor.client.plugins.logging.Logging
-import io.ktor.client.request.get
-import io.ktor.client.request.post
-import io.ktor.client.request.prepareGet
-import io.ktor.client.request.request
-import io.ktor.client.request.setBody
-import io.ktor.client.statement.bodyAsChannel
-import io.ktor.http.content.OutgoingContent
-import io.ktor.utils.io.ByteWriteChannel
-import io.ktor.utils.io.jvm.javaio.toInputStream
-import kotlinx.coroutines.channels.Channel
+//import io.ktor.client.HttpClient
+//import io.ktor.client.engine.cio.CIO
+//import io.ktor.client.plugins.logging.LogLevel
+//import io.ktor.client.plugins.logging.Logging
+//import io.ktor.client.request.get
+//import io.ktor.client.request.post
+//import io.ktor.client.request.prepareGet
+//import io.ktor.client.request.request
+//import io.ktor.client.request.setBody
+//import io.ktor.client.statement.bodyAsChannel
+//import io.ktor.http.content.OutgoingContent
+//import io.ktor.utils.io.ByteWriteChannel
+//import io.ktor.utils.io.jvm.javaio.toInputStream
+//import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.runBlocking
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -37,11 +37,11 @@ val HTTP_RECEIVE_HEADERS = ("GET /receive HTTP/1.1\r\n" +
 val sendPackets = ArrayBlockingQueue<ByteArray>(3000)
 val receivePackets = ArrayBlockingQueue<ByteArray>(3000)
 
-val client = HttpClient(CIO) {
-    install(Logging) {
-        level = LogLevel.INFO
-    }
-}
+//val client = HttpClient(CIO) {
+//    install(Logging) {
+//        level = LogLevel.INFO
+//    }
+//}
 
 fun startSendConnection() {
 //    runBlocking {
