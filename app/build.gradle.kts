@@ -45,9 +45,5 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
-
-//    implementation("io.ktor:ktor-client-core:2.3.3")
-//    implementation("io.ktor:ktor-client-cio:2.3.3")
-//    implementation("io.ktor:ktor-client-logging:2.3.3")
-//    implementation("io.ktor:ktor-network-tls-certificates:2.3.3")
+    implementation("io.netty:netty-all:4.1.65.Final")
 }

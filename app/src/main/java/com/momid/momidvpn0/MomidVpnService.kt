@@ -11,22 +11,16 @@ import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import com.momid.channel
+import com.momid.incomingInternetPackets
+import com.momid.startClient
+import io.netty.buffer.Unpooled
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.util.concurrent.Executors
-import com.momid.momidvpn0.tcp.startSendConnection
-import com.momid.momidvpn0.tcp.startReceivingConnection
-import com.momid.momidvpn0.tcp.startSendingAndReceiving
-import com.momid.momidvpn0.tcp.tcpSocket
-import com.momid.momidvpn0.tcp.writeWithSize
-import com.momid.momidvpn0.tcp.xorEncode
-import java.io.OutputStream
 
 val SERVER_IP_ADDRESS = "141.98.210.95"
 
@@ -65,6 +59,7 @@ class MomidVpnService : VpnService() {
         return binder
     }
 
+    @OptIn(ExperimentalStdlibApi::class)
     public fun connect() {
 
 
@@ -93,32 +88,35 @@ class MomidVpnService : VpnService() {
 //        }.start()
 
         Thread {
-            startSendingAndReceiving({
-                if (!protect(tcpSocket)) {
-                    println("socket not protected")
-                }
+            startClient()
+//            channel.writeAndFlush("hello".toByteArray())
+//            startSendConnection {
+//                if (!protect(it)) {
+//                    println("socket not protected")
+//                }
 
-                parcelFileDescriptor =
-                    connectVpn() ?: kotlin.run { println("cannot connect"); return@startSendingAndReceiving }
-                try {
+                    parcelFileDescriptor =
+                        connectVpn() ?: kotlin.run { println("cannot connect"); return@Thread }
+                    try {
 //            input = FileInputStream(parcelFileDescriptor.fileDescriptor)
-                    output = FileOutputStream(parcelFileDescriptor!!.fileDescriptor)
-                } catch (throwable: Throwable) {
-                    throwable.printStackTrace()
-                    return@startSendingAndReceiving
-                }
-                receiveThread =
-                    Thread {
-                        input =
-                            FileInputStream(parcelFileDescriptor!!.fileDescriptor)
+                        output = FileOutputStream(parcelFileDescriptor!!.fileDescriptor)
+                    } catch (throwable: Throwable) {
+                        throwable.printStackTrace()
+                        return@Thread
+                    }
+                    receiveThread = Thread {
+                            input = FileInputStream(parcelFileDescriptor!!.fileDescriptor)
 //                                    is_new_send.set(true)
 
-                        while (connected == CONNECTED) {
-                            try {
-                                val incomingDataSize = input!!.read(receiveBuffer)
+                            while (connected == CONNECTED) {
+                                try {
+                                    val incomingDataSize = input!!.read(receiveBuffer)
 //                                executor.execute {
-                                    val incomingData =
-                                        receiveBuffer.sliceArray(0 until incomingDataSize)
+                                    val incomingData = receiveBuffer.sliceArray(0 until incomingDataSize)
+                                    println("sending")
+                                    println(incomingData.joinToString(" ") {
+                                        it.toHexString()
+                                    })
 //                                                    if (is_new_send.get()) {
 //                                                        is_new_send.set(false)
 //                                                        receiveBuffer.sliceArray(0 until incomingDataSize)
@@ -128,43 +126,47 @@ class MomidVpnService : VpnService() {
 //                                                    }
 //                            runBlocking {
 //                                sendPackets.put(incomingData)
-                                    xorEncode(incomingData)
-                                    tcpOutputStream?.writeWithSize(incomingData, writeToInternetBuffer)
+//                                    xorEncode(incomingData)
+//                                    tcpOutputStream?.writeWithSize(incomingData, writeToInternetBuffer)
+//                                    println("writing " + incomingData.size)
+//                                    println(channel!!.isActive)
+                                    val packet = Unpooled.copiedBuffer(incomingData)
+                                    channel!!.writeAndFlush(packet)
+//                                        .addListener { future ->
+//                                        if (future.isSuccess) {
+//                                            println("Write successful")
+//                                        } else {
+//                                            println("Write failed: ${future.cause()}")
+//                                        }
+//                                    }
 //                            }
 //                                }
-                            } catch (ioException: IOException) {
-                                ioException.printStackTrace()
-                                return@Thread
+                                } catch (ioException: IOException) {
+                                    ioException.printStackTrace()
+                                    return@Thread
+                                }
                             }
-                        }
                     }
 
-//                        receiveThread?.start()
-
-//        udpHandler!!.startReceiving(object : UdpHandler.PacketListener {
-//            override fun onPacket(packet: ByteArray, socketAddress: SocketAddress) {
-//                try {
-//                    output!!.write(packet)
-////                    println("received" + packet.joinToString(" ") { String.format("0x%02X", it) })
-//                } catch (throwable: Throwable) {
-//                    throwable.printStackTrace()
-//                }
-//            }
-//        })
-
-                receiveThread?.start()
-            }, {
+                    receiveThread?.start()
+            while (true) {
                 try {
                     if (output != null) {
-                        println(it.joinToString(" ") { eachByte -> "%02x".format(eachByte) } + "\n\n\n")
-                        output!!.write(it)
+                        val packet = incomingInternetPackets.take()
+                        println("received " + packet.size)
+                        println(packet.joinToString(" ") {
+                            it.toHexString()
+                        })
+//                            println(it.joinToString(" ") { eachByte -> "%02x".format(eachByte) } + "\n\n\n")
+                        output!!.write(packet)
                     } else {
                         println("output is null")
                     }
                 } catch (t: Throwable) {
                     t.printStackTrace()
                 }
-            })
+            }
+//            }
         }.start()
 
 //        Thread {
@@ -210,10 +212,10 @@ class MomidVpnService : VpnService() {
 //        val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
 //        val networks = connectivityManager.activeNetwork
         val vpnBuilder = this.Builder()
-        vpnBuilder.addAddress("192.168.3.8", 32)
+        vpnBuilder.addAddress("10.0.0.3", 24)
         vpnBuilder.addRoute("0.0.0.0", 0)
-        vpnBuilder.addDnsServer("1.1.1.1")
-        vpnBuilder.setMtu(1380)
+        vpnBuilder.addDnsServer("8.8.8.8")
+        vpnBuilder.setMtu(1300)
 
 //        vpnBuilder.addRoute("0.0.0.0", 1);
 //        vpnBuilder.addRoute("128.0.0.0", 1);
@@ -372,7 +374,7 @@ class MomidVpnService : VpnService() {
 
         vpnBuilder.setBlocking(true)
         vpnBuilder.setSession("aoi")
-//        vpnBuilder.addDisallowedApplication("com.momid.momidvpn0")
+        vpnBuilder.addDisallowedApplication("com.momid.momidvpn0")
 //        vpnBuilder.setUnderlyingNetworks(arrayOf(networks))
         return vpnBuilder.establish()
     }
