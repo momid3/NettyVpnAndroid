@@ -1,7 +1,7 @@
 package com.momid
 
 import io.netty.bootstrap.Bootstrap
-import io.netty.channel.Channel
+import io.netty.channel.ChannelFuture
 import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.ChannelInitializer
 import io.netty.channel.ChannelOption
@@ -17,7 +17,7 @@ import io.netty.handler.ssl.util.InsecureTrustManagerFactory
 
 var channel: ChannelHandlerContext? = null
 
-fun startClient(): Channel {
+fun startClient(onDisconnect: () -> Unit): Boolean {
     val group: EventLoopGroup = NioEventLoopGroup()
 //    try {
         // Create SSL context
@@ -39,12 +39,18 @@ fun startClient(): Channel {
                     pipeline.addLast(LengthFieldBasedFrameDecoder(3800, 0, 4, 0, 4))
                     pipeline.addLast(LengthFieldPrepender(4))
                     // Add the main handler
-                    pipeline.addLast(ClientHandler())
+                    pipeline.addLast(ClientHandler(onDisconnect))
                 }
             })
 
         // Connect to the server
-        val channelFuture = bootstrap.connect("194.146.123.180", 443).sync()
+    val channelFuture: ChannelFuture
+    try {
+        channelFuture = bootstrap.connect("194.146.123.180", 443).sync()
+    } catch (t: Throwable) {
+//        t.printStackTrace()
+        return false
+    }
         println("client connected to server")
 //    channelFuture.channel().writeAndFlush("hello".toByteArray())
 
@@ -53,5 +59,9 @@ fun startClient(): Channel {
 //    } finally {
 //        group.shutdownGracefully()
 //    }
-    return channelFuture.channel()
+//    channelFuture.channel().closeFuture().addListener {
+//        println("disconnected")
+//        onDisconnect()
+//    }
+    return true
 }

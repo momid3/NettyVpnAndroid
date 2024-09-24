@@ -37,6 +37,8 @@ class MomidVpnService : VpnService() {
 
     private val receiveBuffer = ByteArray(Short.MAX_VALUE.toInt())
 
+    private var ongoing = false
+
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
 //        connect()
@@ -51,12 +53,12 @@ class MomidVpnService : VpnService() {
     fun connect() {
         updateForegroundNotification("Connected to Momid Vpn")
 
-        connected = CONNECTED
-
-        connectionLiveData.value = CONNECTED
+        connectionLiveData.postValue(CONNECTING)
+        connected = CONNECTING
+        ongoing = true
 
         Thread {
-            startClient()
+            startConnection()
 
             parcelFileDescriptor =
                 connectVpn() ?: kotlin.run { println("cannot connect"); return@Thread }
@@ -69,19 +71,20 @@ class MomidVpnService : VpnService() {
             receiveThread = Thread {
                 input = FileInputStream(parcelFileDescriptor!!.fileDescriptor)
 
-                while (connected == CONNECTED) {
-                    try {
-                        val incomingDataSize = input!!.read(receiveBuffer)
-                        val incomingData = receiveBuffer.sliceArray(0 until incomingDataSize)
-                        println("sending")
-                        println(incomingData.joinToString(" ") {
-                            it.toHexString()
-                        })
-                        val packet = Unpooled.copiedBuffer(incomingData)
-                        channel!!.writeAndFlush(packet)
-                    } catch (ioException: IOException) {
-                        ioException.printStackTrace()
-                        return@Thread
+                while (true) {
+                    if (connected == CONNECTED) {
+                        try {
+                            val incomingDataSize = input!!.read(receiveBuffer)
+                            val incomingData = receiveBuffer.sliceArray(0 until incomingDataSize)
+                            println("sending")
+//                        println(incomingData.joinToString(" ") {
+//                            it.toHexString()
+//                        })
+                            val packet = Unpooled.copiedBuffer(incomingData)
+                            channel?.writeAndFlush(packet)
+                        } catch (ioException: IOException) {
+                            ioException.printStackTrace()
+                        }
                     }
                 }
             }
@@ -89,20 +92,22 @@ class MomidVpnService : VpnService() {
             receiveThread?.start()
 
             while (true) {
-                try {
-                    if (output != null) {
-                        val packet = incomingInternetPackets.take()
-                        println("received " + packet.size)
-                        println(packet.joinToString(" ") {
-                            it.toHexString()
-                        })
+                if (connected == CONNECTED) {
+                    try {
+                        if (output != null) {
+                            val packet = incomingInternetPackets.take()
+                            println("received " + packet.size)
+//                        println(packet.joinToString(" ") {
+//                            it.toHexString()
+//                        })
 //                            println(it.joinToString(" ") { eachByte -> "%02x".format(eachByte) } + "\n\n\n")
-                        output!!.write(packet)
-                    } else {
-                        println("output is null")
+                            output!!.write(packet)
+                        } else {
+                            println("output is null")
+                        }
+                    } catch (t: Throwable) {
+                        t.printStackTrace()
                     }
-                } catch (t: Throwable) {
-                    t.printStackTrace()
                 }
             }
         }.start()
@@ -114,6 +119,7 @@ class MomidVpnService : VpnService() {
 
         connected = DISCONNECTED
         connectionLiveData.value = DISCONNECTED
+        ongoing = false
         receiveThread?.interrupt()
 
         parcelFileDescriptor!!.close()
@@ -172,6 +178,34 @@ class MomidVpnService : VpnService() {
                     //                .setContentIntent()
                     .build()
             )
+        }
+    }
+
+    fun startConnection() {
+        val client = startClient {
+            if (ongoing) {
+                println("reconnecting...")
+                connectionLiveData.postValue(CONNECTING)
+                connected = CONNECTING
+                Thread.sleep(3000)
+                startConnection()
+            }
+        }
+
+        if (client) {
+            println("connected")
+
+            connected = CONNECTED
+
+            connectionLiveData.postValue(CONNECTED)
+        } else {
+            if (ongoing) {
+                println("reconnecting...")
+                connectionLiveData.postValue(CONNECTING)
+                connected = CONNECTING
+                Thread.sleep(3000)
+                startConnection()
+            }
         }
     }
 }

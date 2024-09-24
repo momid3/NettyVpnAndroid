@@ -5,33 +5,19 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.net.VpnService
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.os.IBinder
 import android.widget.Button
+import androidx.appcompat.app.AppCompatActivity
 
 class VpnActivity : AppCompatActivity() {
 
-
-
-
-
     private var momidVpnService : MomidVpnService? = null
-
-
-
-
     private lateinit var connectButton : Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_vpn)
-
-
-
-
-
-
 
         startService(Intent(this, MomidVpnService::class.java))
         bindService(Intent(this, MomidVpnService::class.java), object : ServiceConnection {
@@ -42,16 +28,18 @@ class VpnActivity : AppCompatActivity() {
 
                 if (momidVpnService != null) {
                     var connected = momidVpnService!!.connected
+
                     if (connected == MomidVpnService.CONNECTED) {
 
                         connectButton.text = "Connected"
                     }
 
-
-
-
                     if (connected == MomidVpnService.DISCONNECTED) {
                         connectButton.text = "Connect"
+                    }
+
+                    if (connected == MomidVpnService.CONNECTING) {
+                        connectButton.text = "connecting..."
                     }
                 }
 
@@ -65,6 +53,9 @@ class VpnActivity : AppCompatActivity() {
                         }
                         if (it == MomidVpnService.DISCONNECTED) {
                             connectButton.text = "Connect"
+                        }
+                        if (it == MomidVpnService.CONNECTING) {
+                            connectButton.text = "connecting..."
                         }
                     }
                 }
@@ -94,6 +85,10 @@ class VpnActivity : AppCompatActivity() {
             if (connected == MomidVpnService.CONNECTED) {
                 momidVpnService!!.disconnect()
             }
+
+            if (connected == MomidVpnService.CONNECTING) {
+                momidVpnService!!.disconnect()
+            }
         }
     }
 
@@ -111,9 +106,3 @@ class VpnActivity : AppCompatActivity() {
         }
     }
 }
-
-
-
-
-
-

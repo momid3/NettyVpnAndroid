@@ -7,7 +7,7 @@ import java.util.concurrent.ArrayBlockingQueue
 
 val incomingInternetPackets = ArrayBlockingQueue<ByteArray>(300)
 
-class ClientHandler : SimpleChannelInboundHandler<ByteBuf>() {
+class ClientHandler(val onDisconnect: () -> Unit) : SimpleChannelInboundHandler<ByteBuf>() {
 
     override fun channelActive(ctx: ChannelHandlerContext) {
 //        ctx.writeAndFlush("hello".toByteArray())
@@ -24,5 +24,6 @@ class ClientHandler : SimpleChannelInboundHandler<ByteBuf>() {
     override fun exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable) {
         cause.printStackTrace()
         ctx.close()
+        onDisconnect()
     }
 }
