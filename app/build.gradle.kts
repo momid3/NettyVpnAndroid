@@ -46,4 +46,5 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     implementation("io.netty:netty-all:4.1.65.Final")
+    implementation("com.squareup.okhttp3:okhttp:4.10.0")
 }

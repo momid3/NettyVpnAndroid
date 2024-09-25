@@ -15,9 +15,13 @@ import com.momid.channel
 import com.momid.incomingInternetPackets
 import com.momid.startClient
 import io.netty.buffer.Unpooled
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
+import kotlin.random.Random
 
 val SERVER_IP_ADDRESS = "141.98.210.95"
 
@@ -59,6 +63,8 @@ class MomidVpnService : VpnService() {
 
         Thread {
             startConnection()
+
+            connectRandomPenetration()
 
             parcelFileDescriptor =
                 connectVpn() ?: kotlin.run { println("cannot connect"); return@Thread }
@@ -206,6 +212,67 @@ class MomidVpnService : VpnService() {
                 Thread.sleep(3000)
                 startConnection()
             }
+        }
+    }
+
+    fun connectRandomPenetration() {
+        // List of random real endpoints
+        val urls = listOf(
+            "https://www.google.com",          // Google search
+            "https://www.wikipedia.org",       // Wikipedia homepage
+            "https://www.googleapis.com",
+//            "https://www.twitter.com",         // Twitter homepage
+            "https://play.googleapis.com",
+            "https://www.gstatic.com",
+//            "https://www.reddit.com",          // Reddit homepage
+            "https://fcm.googleapis.com",
+//            "https://www.nytimes.com",         // New York Times
+            "https://www.github.com",          // GitHub
+            "https://www.stackoverflow.com",   // StackOverflow homepage
+//            "https://www.ebay.com",            // eBay homepage
+            "https://notifications.google.com",
+//            "https://www.spotify.com",         // Spotify homepage
+//            "https://www.tumblr.com",          // Tumblr homepage
+            "https://www.googleapis.com/youtube/v3"
+        )
+        repeat(3) {
+            Thread {
+                Thread.sleep(Random.nextInt(0, 3000).toLong())
+                while (ongoing) {
+                    if (connected == CONNECTED) {
+                        // Create OkHttpClient instance
+                        val client = OkHttpClient()
+
+//                        for (url in urls) {
+                        val url = urls.random()
+                        try {
+                            val request = Request.Builder()
+                                .url(url)
+                                .build()
+
+                            // Execute the request
+                            val response: Response = client.newCall(request).execute()
+
+                            // Print the status code and response body
+                            println("Connecting to: $url")
+                            println("Response Code: ${response.code}")
+                            println(
+                                "Response Body: ${
+                                    response.body?.string()?.take(200)
+                                }..."
+                            ) // Truncated for readability
+                            println("---------------")
+
+                        } catch (e: IOException) {
+                            println("Failed to connect to $url")
+                            e.printStackTrace()
+                        }
+
+                        Thread.sleep(3000)
+//                        }
+                    }
+                }
+            }.start()
         }
     }
 }
