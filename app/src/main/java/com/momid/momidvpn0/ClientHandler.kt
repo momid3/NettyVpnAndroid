@@ -11,7 +11,8 @@ class ClientHandler(val onDisconnect: () -> Unit) : SimpleChannelInboundHandler<
 
     override fun channelActive(ctx: ChannelHandlerContext) {
 //        ctx.writeAndFlush("hello".toByteArray())
-        channel = ctx
+        channel = ctx.channel()
+        println("channel is active")
     }
 
     override fun channelRead0(ctx: ChannelHandlerContext, packet: ByteBuf) {

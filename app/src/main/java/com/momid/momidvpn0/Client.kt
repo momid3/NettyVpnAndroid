@@ -1,8 +1,9 @@
 package com.momid
 
+import com.momid.momidvpn0.HandshakeHandler
 import io.netty.bootstrap.Bootstrap
+import io.netty.channel.Channel
 import io.netty.channel.ChannelFuture
-import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.ChannelInitializer
 import io.netty.channel.ChannelOption
 import io.netty.channel.EventLoopGroup
@@ -15,9 +16,9 @@ import io.netty.handler.ssl.SslContext
 import io.netty.handler.ssl.SslContextBuilder
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory
 
-var channel: ChannelHandlerContext? = null
+var channel: Channel? = null
 
-fun startClient(onDisconnect: () -> Unit): Boolean {
+fun startClient(onConnect: () -> Unit, onDisconnect: () -> Unit): Boolean {
     val group: EventLoopGroup = NioEventLoopGroup()
 //    try {
         // Create SSL context
@@ -29,6 +30,7 @@ fun startClient(onDisconnect: () -> Unit): Boolean {
         bootstrap.group(group)
             .channel(NioSocketChannel::class.java)
             .option(ChannelOption.TCP_NODELAY, true)
+            .option(ChannelOption.SO_KEEPALIVE, true)
             .handler(object : ChannelInitializer<SocketChannel>() {
                 @Throws(Exception::class)
                 override fun initChannel(ch: SocketChannel) {
@@ -39,6 +41,7 @@ fun startClient(onDisconnect: () -> Unit): Boolean {
                     pipeline.addLast(LengthFieldBasedFrameDecoder(3800, 0, 4, 0, 4))
                     pipeline.addLast(LengthFieldPrepender(4))
                     // Add the main handler
+                    pipeline.addLast(HandshakeHandler(onConnect, onDisconnect))
                     pipeline.addLast(ClientHandler(onDisconnect))
                 }
             })
@@ -59,9 +62,9 @@ fun startClient(onDisconnect: () -> Unit): Boolean {
 //    } finally {
 //        group.shutdownGracefully()
 //    }
-//    channelFuture.channel().closeFuture().addListener {
-//        println("disconnected")
+    channelFuture.channel().closeFuture().addListener {
+        println("disconnected")
 //        onDisconnect()
-//    }
+    }
     return true
 }
