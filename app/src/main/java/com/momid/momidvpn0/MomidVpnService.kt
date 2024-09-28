@@ -13,6 +13,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import com.momid.channel
 import com.momid.incomingInternetPackets
+import com.momid.initClient
 import com.momid.startClient
 import io.netty.buffer.Unpooled
 import okhttp3.OkHttpClient
@@ -22,9 +23,15 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import java.net.InetAddress
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 import kotlin.random.Random
 
 val SERVER_IP_ADDRESS = "141.98.210.95"
+
+val retryLock = ReentrantLock()
+
+val retry = retryLock.newCondition()
 
 class MomidVpnService : VpnService() {
 
@@ -44,6 +51,8 @@ class MomidVpnService : VpnService() {
 
     private var ongoing = false
 
+    private var initialized = false
+
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
 //        connect()
@@ -55,15 +64,43 @@ class MomidVpnService : VpnService() {
     }
 
     fun connect() {
-//        Thread {
-//            var retry = true
-//            while (retry) {
-                connectWithIp()
-//            }
-//        }.start()
+        ongoing = true
+
+        if (!initialized) {
+            initClient({
+                println("connected")
+                Thread {
+                    vpnHandShakeEstablished()
+                }.start()
+            }, {
+                connected = CONNECTING
+                connectionLiveData.postValue(CONNECTING)
+
+                retryLock.withLock {
+                    retry.signal()
+                }
+//                receiveThread?.interrupt()
+
+//                parcelFileDescriptor!!.close()
+            })
+            initialized = true
+        }
+
+        Thread {
+            while (ongoing) {
+                retryLock.withLock {
+                    connectWithIp()
+                    retry.await()
+                    Thread.sleep(3000)
+                    println("retrying")
+                    if (channel?.isActive ?: false) {
+                        channel!!.close()
+                    }
+                }
+            }
+        }.start()
     }
 
-    @OptIn(ExperimentalStdlibApi::class)
     fun connectWithIp(): Boolean {
         updateForegroundNotification("Connected to Momid Vpn")
 
@@ -72,20 +109,11 @@ class MomidVpnService : VpnService() {
         ongoing = true
 
         Thread {
-            startClient({
-                vpnHandShakeEstablished()
-            }, {
-                connected = CONNECTING
-                connectionLiveData.postValue(CONNECTING)
-//                receiveThread?.interrupt()
-
-//                parcelFileDescriptor!!.close()
-            })
+            startClient()
         }.start()
 
         println("starting")
 
-//        receiveThread?.join()
         return !ongoing
     }
 
@@ -108,7 +136,7 @@ class MomidVpnService : VpnService() {
         receiveThread = Thread {
             input = FileInputStream(parcelFileDescriptor!!.fileDescriptor)
 
-            while (true) {
+            while (connected == CONNECTED) {
                 if (connected == CONNECTED) {
                     try {
                         val incomingDataSize = input!!.read(receiveBuffer)
@@ -136,7 +164,7 @@ class MomidVpnService : VpnService() {
 
         receiveThread?.start()
 
-        while (true) {
+        while (connected == CONNECTED) {
             if (connected == CONNECTED) {
                 try {
                     if (output != null) {

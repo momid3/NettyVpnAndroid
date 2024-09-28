@@ -18,34 +18,41 @@ import io.netty.handler.ssl.util.InsecureTrustManagerFactory
 
 var channel: Channel? = null
 
-fun startClient(onConnect: () -> Unit, onDisconnect: () -> Unit): Boolean {
+val bootstrap = Bootstrap()
+
+var vpnOnDisconnect: (() -> Unit)? = null
+
+fun initClient(onConnect: () -> Unit, onDisconnect: () -> Unit) {
     val group: EventLoopGroup = NioEventLoopGroup()
 //    try {
-        // Create SSL context
-        val sslContext: SslContext = SslContextBuilder.forClient()
-            .trustManager(InsecureTrustManagerFactory.INSTANCE) // For self-signed certificates (Not recommended for production)
-            .build()
+    // Create SSL context
+    val sslContext: SslContext = SslContextBuilder.forClient()
+        .trustManager(InsecureTrustManagerFactory.INSTANCE) // For self-signed certificates (Not recommended for production)
+        .build()
 
-        val bootstrap = Bootstrap()
-        bootstrap.group(group)
-            .channel(NioSocketChannel::class.java)
-            .option(ChannelOption.TCP_NODELAY, true)
-            .option(ChannelOption.SO_KEEPALIVE, true)
-            .handler(object : ChannelInitializer<SocketChannel>() {
-                @Throws(Exception::class)
-                override fun initChannel(ch: SocketChannel) {
-                    val pipeline = ch.pipeline()
-                    // Add SSL handler first to encrypt and decrypt everything
-                    pipeline.addLast(sslContext.newHandler(ch.alloc()))
-                    // Add frame decoder and prepender
-                    pipeline.addLast(LengthFieldBasedFrameDecoder(3800, 0, 4, 0, 4))
-                    pipeline.addLast(LengthFieldPrepender(4))
-                    // Add the main handler
-                    pipeline.addLast(HandshakeHandler(onConnect, onDisconnect))
-                    pipeline.addLast(ClientHandler(onDisconnect))
-                }
-            })
+    vpnOnDisconnect = onDisconnect
 
+    bootstrap.group(group)
+        .channel(NioSocketChannel::class.java)
+        .option(ChannelOption.TCP_NODELAY, true)
+        .option(ChannelOption.SO_KEEPALIVE, true)
+        .handler(object : ChannelInitializer<SocketChannel>() {
+            @Throws(Exception::class)
+            override fun initChannel(ch: SocketChannel) {
+                val pipeline = ch.pipeline()
+                // Add SSL handler first to encrypt and decrypt everything
+                pipeline.addLast(sslContext.newHandler(ch.alloc()))
+                // Add frame decoder and prepender
+                pipeline.addLast(LengthFieldBasedFrameDecoder(3800, 0, 4, 0, 4))
+                pipeline.addLast(LengthFieldPrepender(4))
+                // Add the main handler
+                pipeline.addLast(HandshakeHandler(onConnect, onDisconnect))
+                pipeline.addLast(ClientHandler(onDisconnect))
+            }
+        })
+}
+
+fun startClient(): Boolean {
         // Connect to the server
     val channelFuture: ChannelFuture
     try {
@@ -64,7 +71,8 @@ fun startClient(onConnect: () -> Unit, onDisconnect: () -> Unit): Boolean {
 //    }
     channelFuture.channel().closeFuture().addListener {
         println("disconnected")
-//        onDisconnect()
+        val onDisconnect = vpnOnDisconnect ?: throw (Throwable("client not initialized"))
+        onDisconnect()
     }
     return true
 }
