@@ -73,11 +73,14 @@ class MomidVpnService : VpnService() {
                     vpnHandShakeEstablished()
                 }.start()
             }, {
-                connected = CONNECTING
-                connectionLiveData.postValue(CONNECTING)
+                if (connected != DISCONNECTED) {
+                    connected = CONNECTING
+                    connectionLiveData.postValue(CONNECTING)
 
-                retryLock.withLock {
-                    retry.signal()
+
+                    retryLock.withLock {
+                        retry.signal()
+                    }
                 }
 //                receiveThread?.interrupt()
 
@@ -89,13 +92,20 @@ class MomidVpnService : VpnService() {
         Thread {
             while (ongoing) {
                 retryLock.withLock {
-                    connectWithIp()
+                    if (connected != CONNECTED) {
+                        connectWithIp()
+                    }
                     retry.await()
                     Thread.sleep(3000)
                     println("retrying")
-                    if (channel?.isActive ?: false) {
-                        channel!!.close()
+                    if (channel?.isActive ?: false || channel?.isOpen ?: false) {
+                        println("closing the channel")
+                        channel!!.close().sync()
                     }
+                    connected = CONNECTING
+                    connectionLiveData.postValue(CONNECTING)
+                    receiveThread?.join()
+                    parcelFileDescriptor!!.close()
                 }
             }
         }.start()
@@ -190,6 +200,10 @@ class MomidVpnService : VpnService() {
         connected = DISCONNECTED
         connectionLiveData.value = DISCONNECTED
         ongoing = false
+        if (channel?.isActive ?: false || channel?.isOpen ?: false) {
+            println("closing the channel")
+            channel!!.close().sync()
+        }
         receiveThread?.interrupt()
 
         parcelFileDescriptor!!.close()
@@ -203,7 +217,7 @@ class MomidVpnService : VpnService() {
         vpnBuilder.addAddress(address, 24)
         vpnBuilder.addRoute("0.0.0.0", 0)
         vpnBuilder.addDnsServer("8.8.8.8")
-        vpnBuilder.setMtu(1380)
+        vpnBuilder.setMtu(1500)
 
         vpnBuilder.setBlocking(true)
         vpnBuilder.setSession("aoi")

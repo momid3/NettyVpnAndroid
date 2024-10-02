@@ -59,6 +59,9 @@ fun startClient(): Boolean {
         channelFuture = bootstrap.connect("194.146.123.180", 443).sync()
     } catch (t: Throwable) {
 //        t.printStackTrace()
+        println("did not connect")
+        val onDisconnect = vpnOnDisconnect ?: throw (Throwable("client not initialized"))
+        onDisconnect()
         return false
     }
         println("client connected to server")

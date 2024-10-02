@@ -18,13 +18,13 @@ class ClientHandler(val onDisconnect: () -> Unit) : SimpleChannelInboundHandler<
     override fun channelRead0(ctx: ChannelHandlerContext, packet: ByteBuf) {
         val received = ByteArray(packet.readableBytes())
         packet.readBytes(received)
+        println("received from server: ${received.size}")
         incomingInternetPackets.put(received)
-//        println("received from server: ${received.size}")
     }
 
     override fun exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable) {
         cause.printStackTrace()
         ctx.close()
-        onDisconnect()
+//        onDisconnect()
     }
 }
