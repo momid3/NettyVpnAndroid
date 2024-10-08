@@ -5,7 +5,7 @@ import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.SimpleChannelInboundHandler
 import java.util.concurrent.ArrayBlockingQueue
 
-val incomingInternetPackets = ArrayBlockingQueue<ByteArray>(300)
+val incomingInternetPackets = ArrayBlockingQueue<ByteArray>(10000)
 
 class ClientHandler(val onDisconnect: () -> Unit) : SimpleChannelInboundHandler<ByteBuf>() {
 

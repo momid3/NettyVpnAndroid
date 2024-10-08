@@ -23,6 +23,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import java.net.InetAddress
+import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import kotlin.random.Random
@@ -32,6 +33,20 @@ val SERVER_IP_ADDRESS = "141.98.210.95"
 val retryLock = ReentrantLock()
 
 val retry = retryLock.newCondition()
+
+val sendUserPackets = ArrayBlockingQueue<ByteArray>(3000)
+
+var first = 1
+
+var received = 8
+
+var firstInternetReceived = false
+
+var totalUserSent = 0
+
+var totalInternetReceived = 0
+
+var clientHandshakeStep = 0
 
 class MomidVpnService : VpnService() {
 
@@ -117,6 +132,7 @@ class MomidVpnService : VpnService() {
         connectionLiveData.postValue(CONNECTING)
         connected = CONNECTING
         ongoing = true
+        clientHandshakeStep = 0
 
         Thread {
             startClient()
@@ -128,6 +144,7 @@ class MomidVpnService : VpnService() {
     }
 
     fun vpnHandShakeEstablished() {
+        first = 1
         connected = CONNECTED
         connectionLiveData.postValue(CONNECTED)
 
@@ -146,24 +163,50 @@ class MomidVpnService : VpnService() {
         receiveThread = Thread {
             input = FileInputStream(parcelFileDescriptor!!.fileDescriptor)
 
+            var last = System.currentTimeMillis()
+
+            var isLarge = false
+
             while (connected == CONNECTED) {
                 if (connected == CONNECTED) {
                     try {
-                        val incomingDataSize = input!!.read(receiveBuffer)
-                        val incomingData = receiveBuffer.sliceArray(0 until incomingDataSize)
-                        println("sending")
+                        if (first > 0 && sendUserPackets.isNotEmpty()) {
+                            if (System.currentTimeMillis() - last < 180) {
+                                continue
+                            } else {
+                                first = 1
+                            }
+                        }
+//                        if (received > -3 || !firstInternetReceived) {
+                            val incomingDataSize = input!!.read(receiveBuffer)
+                            val incomingData = receiveBuffer.sliceArray(0 until incomingDataSize)
+
+                            println("sending " + incomingData.size)
 //                        println(incomingData.joinToString(" ") {
 //                            it.toHexString()
 //                        })
-                        val packet = Unpooled.copiedBuffer(incomingData)
-                        channel?.writeAndFlush(packet)?.addListener {
-                            if (it.isSuccess) {
-                                println("writing to channel")
-                            }
-                            if (!it.isSuccess) {
-                                println("is not sent")
-                                it.cause().printStackTrace()
-                            }
+                        if (first > 0 || isLarge) {
+                            isLarge = incomingData.size > 1300
+                            val packet = Unpooled.copiedBuffer(incomingData)
+                            channel?.writeAndFlush(packet)?.addListener {
+                                if (it.isSuccess) {
+                                    println("writing to channel")
+                                }
+                                if (!it.isSuccess) {
+                                    println("is not sent")
+                                    it.cause().printStackTrace()
+                                }
+                            }?.sync()
+                            first -= 1
+                            received -= 1
+                        totalUserSent += 1
+//                        println("total user sent " + totalUserSent)
+//                        }
+//                            first -= 1
+                            last = System.currentTimeMillis()
+                        } else {
+                            sendUserPackets.put(incomingData)
+                            first = 1
                         }
                     } catch (ioException: IOException) {
                         ioException.printStackTrace()
@@ -180,11 +223,27 @@ class MomidVpnService : VpnService() {
                     if (output != null) {
                         val packet = incomingInternetPackets.take()
                         println("received " + packet.size)
+                        received += 1
+                        firstInternetReceived = true
+                        totalInternetReceived += 1
+//                        println("total internet received " + totalInternetReceived)
 //                        println(packet.joinToString(" ") {
 //                            it.toHexString()
 //                        })
 //                            println(it.joinToString(" ") { eachByte -> "%02x".format(eachByte) } + "\n\n\n")
                         output!!.write(packet)
+
+                        val userSendPacket = sendUserPackets.poll() ?: continue
+                        val packetOfUserSend = Unpooled.copiedBuffer(userSendPacket)
+                        channel?.writeAndFlush(packetOfUserSend)?.addListener {
+                            if (it.isSuccess) {
+                                println("writing to channel")
+                            }
+                            if (!it.isSuccess) {
+                                println("is not sent")
+                                it.cause().printStackTrace()
+                            }
+                        }?.sync()
                     } else {
                         println("output is null")
                     }
@@ -217,7 +276,7 @@ class MomidVpnService : VpnService() {
         vpnBuilder.addAddress(address, 24)
         vpnBuilder.addRoute("0.0.0.0", 0)
         vpnBuilder.addDnsServer("8.8.8.8")
-        vpnBuilder.setMtu(1500)
+        vpnBuilder.setMtu(1380)
 
         vpnBuilder.setBlocking(true)
         vpnBuilder.setSession("aoi")
