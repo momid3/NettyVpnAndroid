@@ -1,5 +1,6 @@
 package com.momid
 
+import com.momid.padding.unoffsetize
 import io.netty.buffer.ByteBuf
 import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.SimpleChannelInboundHandler
@@ -19,7 +20,7 @@ class ClientHandler(val onDisconnect: () -> Unit) : SimpleChannelInboundHandler<
         val received = ByteArray(packet.readableBytes())
         packet.readBytes(received)
         println("received from server: ${received.size}")
-        incomingInternetPackets.put(received)
+        incomingInternetPackets.put(received.unoffsetize())
     }
 
     override fun exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable) {

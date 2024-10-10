@@ -14,6 +14,7 @@ import androidx.lifecycle.MutableLiveData
 import com.momid.channel
 import com.momid.incomingInternetPackets
 import com.momid.initClient
+import com.momid.padding.offsetize
 import com.momid.startClient
 import io.netty.buffer.Unpooled
 import okhttp3.OkHttpClient
@@ -47,6 +48,10 @@ var totalUserSent = 0
 var totalInternetReceived = 0
 
 var clientHandshakeStep = 0
+
+var last = 0L
+
+var isLarge = false
 
 class MomidVpnService : VpnService() {
 
@@ -163,15 +168,13 @@ class MomidVpnService : VpnService() {
         receiveThread = Thread {
             input = FileInputStream(parcelFileDescriptor!!.fileDescriptor)
 
-            var last = System.currentTimeMillis()
-
-            var isLarge = false
+            last = System.currentTimeMillis()
 
             while (connected == CONNECTED) {
                 if (connected == CONNECTED) {
                     try {
-                        if (first > 0 && sendUserPackets.isNotEmpty()) {
-                            if (System.currentTimeMillis() - last < 180) {
+                        if (first <= 0 && !isLarge && sendUserPackets.isNotEmpty()) {
+                            if (System.currentTimeMillis() - last < 30) {
                                 continue
                             } else {
                                 first = 1
@@ -186,8 +189,8 @@ class MomidVpnService : VpnService() {
 //                            it.toHexString()
 //                        })
                         if (first > 0 || isLarge) {
-                            isLarge = incomingData.size > 1300
-                            val packet = Unpooled.copiedBuffer(incomingData)
+                            isLarge = incomingData.size > 1438
+                            val packet = Unpooled.copiedBuffer(incomingData.offsetize())
                             channel?.writeAndFlush(packet)?.addListener {
                                 if (it.isSuccess) {
                                     println("writing to channel")
@@ -196,7 +199,7 @@ class MomidVpnService : VpnService() {
                                     println("is not sent")
                                     it.cause().printStackTrace()
                                 }
-                            }?.sync()
+                            }
                             first -= 1
                             received -= 1
                         totalUserSent += 1
@@ -206,7 +209,7 @@ class MomidVpnService : VpnService() {
                             last = System.currentTimeMillis()
                         } else {
                             sendUserPackets.put(incomingData)
-                            first = 1
+//                            first = 1
                         }
                     } catch (ioException: IOException) {
                         ioException.printStackTrace()
@@ -226,6 +229,7 @@ class MomidVpnService : VpnService() {
                         received += 1
                         firstInternetReceived = true
                         totalInternetReceived += 1
+                        first = 1
 //                        println("total internet received " + totalInternetReceived)
 //                        println(packet.joinToString(" ") {
 //                            it.toHexString()
@@ -234,7 +238,7 @@ class MomidVpnService : VpnService() {
                         output!!.write(packet)
 
                         val userSendPacket = sendUserPackets.poll() ?: continue
-                        val packetOfUserSend = Unpooled.copiedBuffer(userSendPacket)
+                        val packetOfUserSend = Unpooled.copiedBuffer(userSendPacket.offsetize())
                         channel?.writeAndFlush(packetOfUserSend)?.addListener {
                             if (it.isSuccess) {
                                 println("writing to channel")
@@ -243,7 +247,113 @@ class MomidVpnService : VpnService() {
                                 println("is not sent")
                                 it.cause().printStackTrace()
                             }
-                        }?.sync()
+                        }
+                        isLarge = userSendPacket.size > 1438
+                        first -= 1
+                        last = System.currentTimeMillis()
+                    } else {
+                        println("output is null")
+                    }
+                } catch (t: Throwable) {
+                    t.printStackTrace()
+                }
+            }
+        }
+    }
+
+    fun vpnMultiplePack() {
+        receiveThread = Thread {
+            input = FileInputStream(parcelFileDescriptor!!.fileDescriptor)
+
+            last = System.currentTimeMillis()
+
+            while (connected == CONNECTED) {
+                if (connected == CONNECTED) {
+                    try {
+                        if (first <= 0 && !isLarge && sendUserPackets.isNotEmpty()) {
+                            if (System.currentTimeMillis() - last < 138) {
+                                continue
+                            } else {
+                                first = 1
+                            }
+                        }
+//                        if (received > -3 || !firstInternetReceived) {
+                        val incomingDataSize = input!!.read(receiveBuffer)
+                        val incomingData = receiveBuffer.sliceArray(0 until incomingDataSize)
+
+                        println("sending " + incomingData.size)
+//                        println(incomingData.joinToString(" ") {
+//                            it.toHexString()
+//                        })
+                        if (first > 0 || isLarge) {
+                            isLarge = incomingData.size > 1438
+                            val packet = Unpooled.copiedBuffer(incomingData.offsetize())
+                            channel?.writeAndFlush(packet)?.addListener {
+                                if (it.isSuccess) {
+                                    println("writing to channel")
+                                }
+                                if (!it.isSuccess) {
+                                    println("is not sent")
+                                    it.cause().printStackTrace()
+                                }
+                            }
+                            first -= 1
+                            received -= 1
+                            totalUserSent += 1
+//                        println("total user sent " + totalUserSent)
+//                        }
+//                            first -= 1
+                            last = System.currentTimeMillis()
+                        } else {
+                            sendUserPackets.put(incomingData)
+//                            first = 1
+                        }
+                    } catch (ioException: IOException) {
+                        ioException.printStackTrace()
+                    }
+                }
+            }
+        }
+
+        receiveThread?.start()
+
+        while (connected == CONNECTED) {
+            if (connected == CONNECTED) {
+                try {
+                    if (output != null) {
+                        val packet = incomingInternetPackets.take()
+                        println("received " + packet.size)
+                        received += 1
+                        firstInternetReceived = true
+                        totalInternetReceived += 1
+                        first = 1
+//                        println("total internet received " + totalInternetReceived)
+//                        println(packet.joinToString(" ") {
+//                            it.toHexString()
+//                        })
+//                            println(it.joinToString(" ") { eachByte -> "%02x".format(eachByte) } + "\n\n\n")
+                        output!!.write(packet)
+
+                        while (sendUserPackets.isNotEmpty()) {
+                            val userSendPacket = sendUserPackets.poll() ?: continue
+                            val packetOfUserSend = if (sendUserPackets.size > 1) {
+                                Unpooled.copiedBuffer(userSendPacket.offsetize(1442))
+                            } else {
+                                Unpooled.copiedBuffer(userSendPacket.offsetize())
+                            }
+                            channel?.writeAndFlush(packetOfUserSend)?.addListener {
+                                if (it.isSuccess) {
+                                    println("writing to channel")
+                                }
+                                if (!it.isSuccess) {
+                                    println("is not sent")
+                                    it.cause().printStackTrace()
+                                }
+                            }
+                            isLarge = userSendPacket.size > 1438
+                            first -= 1
+                            last = System.currentTimeMillis()
+                        }
                     } else {
                         println("output is null")
                     }
@@ -276,8 +386,7 @@ class MomidVpnService : VpnService() {
         vpnBuilder.addAddress(address, 24)
         vpnBuilder.addRoute("0.0.0.0", 0)
         vpnBuilder.addDnsServer("8.8.8.8")
-        vpnBuilder.setMtu(1380)
-
+        vpnBuilder.setMtu(1500)
         vpnBuilder.setBlocking(true)
         vpnBuilder.setSession("aoi")
         vpnBuilder.addDisallowedApplication("com.momid.momidvpn0")

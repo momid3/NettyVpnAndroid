@@ -1,11 +1,12 @@
-package com.momid.momidvpn0
+package com.momid.padding
 
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.Unpooled
+import kotlin.math.min
 import kotlin.random.Random
 
 val offset = ByteArray(4) {
-    383.toByte()
+    3837333.toByte()
 }
 
 fun byteArrayToInt(byteArray: ByteArray): Int {
@@ -27,14 +28,28 @@ fun intToByteArray(value: Int): ByteArray {
 
 fun offset(byteArray: ByteArray): ByteArray {
     val size = intToByteArray(byteArray.size)
-    val random = Random.nextInt(83, 183)
+    val random = Random.nextInt(min(byteArray.size + 8, 83), 133)
     val packet = ByteArray(random) {
         if (it < 4) {
             size[it]
         } else if (it < 4 + byteArray.size) {
             byteArray[it - 4]
         } else {
-            383.toByte()
+            3837333.toByte()
+        }
+    }
+    return packet
+}
+
+fun offset(byteArray: ByteArray, sizeOfPacket: Int): ByteArray {
+    val size = intToByteArray(byteArray.size)
+    val packet = ByteArray(sizeOfPacket) {
+        if (it < 4) {
+            size[it]
+        } else if (it < 4 + byteArray.size) {
+            byteArray[it - 4]
+        } else {
+            3837333.toByte()
         }
     }
     return packet
@@ -71,6 +86,14 @@ fun ByteArray.offsetize(): ByteArray {
 fun ByteArray.unoffsetize(): ByteArray {
     if (isOffset(this)) {
         return unOffset(this)
+    } else {
+        return this
+    }
+}
+
+fun ByteArray.offsetize(sizeOfPacket: Int): ByteArray {
+    if (this.size < sizeOfPacket) {
+        return offset(this, sizeOfPacket)
     } else {
         return this
     }
